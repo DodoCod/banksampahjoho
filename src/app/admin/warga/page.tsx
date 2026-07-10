@@ -143,22 +143,6 @@ function TambahRtModal({
   return (
     <Modal open={open} onClose={onClose} title="Tambah RT Baru" size="sm">
       <div className="space-y-4">
-        {/* Warning format */}
-        <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
-          <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div className="text-xs text-blue-700">
-            <p className="font-semibold mb-1">Format penulisan RT:</p>
-            <p>Gunakan format <span className="font-mono font-bold">RT XX</span> dengan 2 digit angka.</p>
-            <p className="mt-1">Contoh yang benar:</p>
-            <ul className="list-disc list-inside mt-0.5 space-y-0.5">
-              <li><span className="font-mono">RT 01</span></li>
-              <li><span className="font-mono">RT 02</span></li>
-              <li><span className="font-mono">RT 10</span></li>
-            </ul>
-            <p className="mt-1 text-blue-600">❌ Jangan: "rt01", "RT1", "RT-01", "01"</p>
-          </div>
-        </div>
-
         <Input
           label="Nama RT"
           value={nama}
