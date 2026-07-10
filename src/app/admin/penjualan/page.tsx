@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Plus, ShoppingCart, ExternalLink } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { PageHeader } from "@/components/admin/PageHeader";
@@ -9,10 +9,18 @@ import { Modal } from "@/components/ui/Modal";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { LoadingSpinner, EmptyState } from "@/components/ui/Feedback";
-import { FileUpload } from "@/components/ui/FileUpload";
+import { FileUpload, type FileUploadHandle } from "@/components/ui/FileUpload";
 import { formatRupiah, formatKg, formatDateShort, parseBatchIds, todayISO } from "@/lib/utils";
 import type { CollectionBatch, SaleBatch } from "@/types";
 import toast from "react-hot-toast";
+
+// Format angka mentah ("1000000") -> "1.000.000" untuk ditampilkan di input
+function formatRibuan(value: string) {
+  if (!value) return "";
+  const num = Number(value);
+  if (Number.isNaN(num)) return "";
+  return new Intl.NumberFormat("id-ID").format(num);
+}
 
 export default function AdminPenjualanPage() {
   const [sales, setSales]       = useState<SaleBatch[]>([]);
@@ -20,6 +28,7 @@ export default function AdminPenjualanPage() {
   const [loading, setLoading]   = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving]     = useState(false);
+  const fileUploadRef           = useRef<FileUploadHandle>(null);
   const [form, setForm] = useState({
     tanggal_jual:      todayISO(),
     total_kg:          "",
@@ -67,7 +76,7 @@ export default function AdminPenjualanPage() {
     });
   }
 
-  // Harga per kg otomatis
+  // Harga per kg otomatis (real-time, mengikuti perubahan total_kg & total_penjualan)
   const hargaPerKg =
     form.total_kg && form.total_penjualan
       ? Math.round(parseFloat(form.total_penjualan) / parseFloat(form.total_kg))
@@ -82,6 +91,16 @@ export default function AdminPenjualanPage() {
     }
     setSaving(true);
     try {
+      // Upload nota ke Drive dulu (jika ada file yang belum di-upload)
+      let finalNotaUrl = form.nota_url;
+      if (fileUploadRef.current?.hasPendingFile()) {
+        const uploadResult = await fileUploadRef.current.upload();
+        if (!uploadResult) {
+          throw new Error("Upload nota gagal, transaksi tidak disimpan");
+        }
+        finalNotaUrl = uploadResult.url;
+      }
+
       const res = await fetch("/api/sale-batch", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
@@ -89,7 +108,7 @@ export default function AdminPenjualanPage() {
           collection_batch_ids: form.selected_batches,
           total_kg:             parseFloat(form.total_kg),
           total_penjualan:      parseFloat(form.total_penjualan),
-          nota_url:             form.nota_url,
+          nota_url:             finalNotaUrl,
         }),
       });
       const data = await res.json();
@@ -230,28 +249,52 @@ export default function AdminPenjualanPage() {
 
           {/* Berat & Harga */}
           <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Total Berat (kg)"
-              type="number"
-              step="0.1"
-              min="0"
-              value={form.total_kg}
-              onChange={(e) => setForm({ ...form, total_kg: e.target.value })}
-              placeholder="0"
-              required
-            />
-            <Input
-              label="Total Penjualan (Rp)"
-              type="number"
-              min="0"
-              value={form.total_penjualan}
-              onChange={(e) => setForm({ ...form, total_penjualan: e.target.value })}
-              placeholder="0"
-              required
-            />
+            {/* Total Berat (kg) — tanpa spinner */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Total Berat (kg) <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={form.total_kg}
+                onChange={(e) => setForm({ ...form, total_kg: e.target.value })}
+                placeholder="0"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm
+                  focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500
+                  [appearance:textfield]
+                  [&::-webkit-outer-spin-button]:appearance-none
+                  [&::-webkit-inner-spin-button]:appearance-none"
+              />
+            </div>
+
+            {/* Total Penjualan (Rp) — prefix Rp + pemisah titik ribuan, tanpa spinner */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Total Penjualan (Rp) <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
+                  Rp
+                </span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={formatRibuan(form.total_penjualan)}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, "");
+                    setForm({ ...form, total_penjualan: raw });
+                  }}
+                  placeholder="0"
+                  className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm
+                    focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              </div>
+            </div>
           </div>
 
-          {/* Harga per kg otomatis */}
+          {/* Harga per kg — preview real-time, hanya muncul saat kedua field terisi */}
           {hargaPerKg > 0 && (
             <div className="rounded-lg bg-brand-50 px-3 py-2 text-sm">
               <span className="text-gray-600">Harga per kg: </span>
@@ -259,15 +302,15 @@ export default function AdminPenjualanPage() {
             </div>
           )}
 
-          {/* Upload Nota — komponen baru */}
+          {/* Upload Nota — ref dipakai agar upload ke Drive bisa dipicu manual saat submit */}
           <FileUpload
+            ref={fileUploadRef}
             value={form.nota_url}
             onChange={(url, thumb) =>
               setForm((f) => ({ ...f, nota_url: url, nota_thumb: thumb ?? "" }))
             }
             disabled={saving}
           />
-          
           <div className="flex gap-2 pt-2">
             <Button
               variant="outline"

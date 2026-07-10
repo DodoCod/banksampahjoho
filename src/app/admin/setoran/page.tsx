@@ -1,6 +1,6 @@
 "use client";
-import { useState, useEffect } from "react";
-import { Plus, Trash2, Package, AlertTriangle } from "lucide-react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { Plus, Trash2, Package, AlertTriangle, Search, ChevronDown, Check } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -49,6 +49,153 @@ function KonfirmasiModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+// ── Combobox pencarian warga ──
+interface WargaComboboxProps {
+  label?: string;
+  warga: Warga[];
+  value: string;
+  onChange: (id: string) => void;
+  placeholder?: string;
+  required?: boolean;
+}
+
+function WargaCombobox({
+  label,
+  warga,
+  value,
+  onChange,
+  placeholder = "Cari nama warga...",
+  required,
+}: WargaComboboxProps) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [highlight, setHighlight] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const selected = warga.find((w) => w.id === value) ?? null;
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return warga;
+    return warga.filter(
+      (w) =>
+        w.nama.toLowerCase().includes(q) ||
+        w.rt.toLowerCase().includes(q)
+    );
+  }, [warga, query]);
+
+  // Tutup dropdown kalau klik di luar
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => { setHighlight(0); }, [query, open]);
+
+  function selectWarga(w: Warga) {
+    onChange(w.id);
+    setOpen(false);
+    setQuery("");
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!open) {
+      if (e.key === "ArrowDown" || e.key === "Enter") {
+        setOpen(true);
+        e.preventDefault();
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlight((h) => Math.min(h + 1, filtered.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlight((h) => Math.max(h - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (filtered[highlight]) selectWarga(filtered[highlight]);
+    } else if (e.key === "Escape") {
+      setOpen(false);
+      setQuery("");
+    }
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      {label && (
+        <label className="mb-1.5 block text-sm font-medium text-gray-700">
+          {label} {required && <span className="text-red-500">*</span>}
+        </label>
+      )}
+
+      <div
+        className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition
+          ${open ? "border-brand-500 ring-1 ring-brand-500" : "border-gray-300"}
+          cursor-text bg-white`}
+        onClick={() => {
+          setOpen(true);
+          inputRef.current?.focus();
+        }}
+      >
+        <Search className="h-4 w-4 flex-shrink-0 text-gray-400" />
+
+        {open ? (
+          <input
+            ref={inputRef}
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={selected ? selected.nama : placeholder}
+            className="w-full outline-none placeholder:text-gray-400"
+          />
+        ) : (
+          <span className={`flex-1 truncate ${selected ? "text-gray-900" : "text-gray-400"}`}>
+            {selected ? `${selected.nama} (${selected.rt})` : placeholder}
+          </span>
+        )}
+
+        <ChevronDown
+          className={`h-4 w-4 flex-shrink-0 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </div>
+
+      {open && (
+        <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+          {filtered.length === 0 ? (
+            <p className="px-3 py-2 text-sm text-gray-400">Warga tidak ditemukan</p>
+          ) : (
+            filtered.map((w, i) => (
+              <button
+                type="button"
+                key={w.id}
+                onClick={() => selectWarga(w)}
+                onMouseEnter={() => setHighlight(i)}
+                className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm
+                  ${i === highlight ? "bg-brand-50" : "bg-white"}
+                  ${w.id === value ? "font-medium text-brand-700" : "text-gray-700"}`}
+              >
+                <span>
+                  {w.nama} <span className="text-xs text-gray-400">({w.rt})</span>
+                </span>
+                {w.id === value && <Check className="h-4 w-4 text-brand-600" />}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -253,12 +400,11 @@ export default function AdminSetoranPage() {
       {/* Add setoran modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Tambah Setoran">
         <div className="space-y-4">
-          <Select
+          <WargaCombobox
             label="Warga"
+            warga={warga}
             value={form.warga_id}
-            onChange={(e) => setForm({ ...form, warga_id: e.target.value })}
-            options={warga.map((w) => ({ value: w.id, label: `${w.nama} (${w.rt})` }))}
-            placeholder="Pilih warga..."
+            onChange={(id) => setForm({ ...form, warga_id: id })}
             required
           />
           <Input
