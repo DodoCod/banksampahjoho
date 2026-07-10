@@ -71,13 +71,6 @@ export default function LoginClient() {
             </Button>
           </form>
         </div>
-
-        <p className="mt-4 text-center text-xs text-gray-400">
-          Akses publik:{" "}
-          <a href="/" className="text-brand-600 hover:underline">
-            Dashboard Warga →
-          </a>
-        </p>
       </div>
     </div>
   );
