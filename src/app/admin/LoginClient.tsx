@@ -53,7 +53,7 @@ export default function LoginClient() {
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="mb-4 flex items-center gap-2 rounded-lg bg-brand-50 px-3 py-2.5">
             <Lock className="h-4 w-4 text-brand-600 flex-shrink-0" />
-            <span className="text-xs text-brand-700 font-medium">Area Admin — Khusus Pengurus Karang Taruna</span>
+            <span className="text-xs text-brand-700 font-medium">Area Admin - Khusus Pengurus Karang Taruna</span>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
