@@ -17,6 +17,51 @@ import toast from "react-hot-toast";
 
 interface RT { id: string; nama: string; }
 
+// ── Modal Konfirmasi generik (tema sama di seluruh app) ────────
+function KonfirmasiModal({
+  open,
+  onClose,
+  onConfirm,
+  title,
+  description,
+  confirmLabel = "Hapus",
+  confirmVariant = "danger",
+  loading,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  description: string;
+  confirmLabel?: string;
+  confirmVariant?: "danger" | "primary";
+  loading?: boolean;
+}) {
+  return (
+    <Modal open={open} onClose={onClose} title={title} size="sm">
+      <div className="space-y-4">
+        <div className="flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 p-3">
+          <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-red-700">{description}</p>
+        </div>
+        <div className="flex gap-2 pt-1">
+          <Button variant="outline" fullWidth onClick={onClose} disabled={loading}>
+            Batal
+          </Button>
+          <Button
+            variant={confirmVariant === "danger" ? "danger" : "primary"}
+            fullWidth
+            loading={loading}
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Komponen Select RT dengan opsi "Tambah RT Baru..." ────────
 function RtSelect({
   value,
@@ -54,7 +99,7 @@ function RtSelect({
         {rtList.map((rt) => (
           <option key={rt.id} value={rt.nama}>{rt.nama}</option>
         ))}
-        <option value="__add_new__">➕ Tambah RT Baru...</option>
+        <option value="__add_new__">+ Tambah RT Baru...</option>
       </select>
     </div>
   );
@@ -265,7 +310,11 @@ function KelolaRtModal({
                           onClick={() => startEdit(rt)}
                           className="rounded-lg p-1.5 text-gray-400 hover:bg-white hover:text-brand-600"
                         >
-                          <Pencil className="h-4 w-4" />
+                          {deleting === rt.id ? (
+                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-gray-600" />
+                          ) : (
+                            <Pencil className="h-4 w-4" />
+                          )}
                         </button>
                         <button
                           onClick={() => handleDelete(rt)}
@@ -320,6 +369,10 @@ export default function AdminWargaPage() {
   const [editTarget, setEditTarget] = useState<Warga | null>(null);
   const [saving, setSaving]         = useState(false);
   const [form, setForm]             = useState({ nama: "", rt: "", nomor_hp: "" });
+
+  // State konfirmasi nonaktifkan/aktifkan warga
+  const [konfirmasiWarga, setKonfirmasiWarga] = useState<Warga | null>(null);
+  const [togglingAktif, setTogglingAktif]     = useState(false);
 
   async function loadWarga() {
     setLoading(true);
@@ -389,26 +442,31 @@ export default function AdminWargaPage() {
     }
   }
 
-  async function toggleAktif(w: Warga) {
+  async function handleToggleAktif() {
+    if (!konfirmasiWarga) return;
+    setTogglingAktif(true);
     try {
-      const res  = await fetch(`/api/warga/${w.id}`, {
+      const res  = await fetch(`/api/warga/${konfirmasiWarga.id}`, {
         method:  "PATCH",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ aktif: !w.aktif }),
+        body:    JSON.stringify({ aktif: !konfirmasiWarga.aktif }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
-      toast.success(w.aktif ? "Warga dinonaktifkan" : "Warga diaktifkan");
+      toast.success(konfirmasiWarga.aktif ? "Warga dinonaktifkan" : "Warga diaktifkan");
+      setKonfirmasiWarga(null);
       await loadWarga();
     } catch (e) {
       toast.error(String(e));
+    } finally {
+      setTogglingAktif(false);
     }
   }
 
   const filtered = warga.filter(
     (w) =>
-      w.nama.toLowerCase().includes(search.toLowerCase()) ||
-      w.rt.toLowerCase().includes(search.toLowerCase())
+      String(w.nama ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      String(w.rt ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -474,7 +532,7 @@ export default function AdminWargaPage() {
                     <Pencil className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => toggleAktif(w)}
+                    onClick={() => setKonfirmasiWarga(w)}
                     className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
                   >
                     {w.aktif !== false ? (
@@ -532,7 +590,7 @@ export default function AdminWargaPage() {
           />
 
           <div className="flex gap-2 pt-2">
-            <Button variant="outline" fullWidth onClick={() => setModalOpen(false)}>
+            <Button variant="outline" fullWidth onClick={() => setModalOpen(false)} disabled={saving}>
               Batal
             </Button>
             <Button fullWidth loading={saving} onClick={handleSave}>
@@ -559,6 +617,22 @@ export default function AdminWargaPage() {
           setRtList((prev) => [...prev, newRt].sort((a, b) => a.nama.localeCompare(b.nama)));
           setForm((f) => ({ ...f, rt: newRt.nama }));
         }}
+      />
+
+      {/* ── Modal Konfirmasi Nonaktifkan/Aktifkan Warga ── */}
+      <KonfirmasiModal
+        open={!!konfirmasiWarga}
+        onClose={() => setKonfirmasiWarga(null)}
+        onConfirm={handleToggleAktif}
+        title={konfirmasiWarga?.aktif !== false ? "Nonaktifkan Warga" : "Aktifkan Warga"}
+        description={
+          konfirmasiWarga?.aktif !== false
+            ? `Apakah kamu yakin ingin menonaktifkan ${konfirmasiWarga?.nama}? Warga yang dinonaktifkan tidak akan muncul di daftar aktif.`
+            : `Apakah kamu yakin ingin mengaktifkan kembali ${konfirmasiWarga?.nama}?`
+        }
+        confirmLabel={konfirmasiWarga?.aktif !== false ? "Ya, Nonaktifkan" : "Ya, Aktifkan"}
+        confirmVariant={konfirmasiWarga?.aktif !== false ? "danger" : "primary"}
+        loading={togglingAktif}
       />
     </AdminLayout>
   );

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Plus, Trash2, Package } from "lucide-react";
+import { Plus, Trash2, Package, AlertTriangle } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -14,6 +14,44 @@ import { formatKg, formatDateShort, todayISO } from "@/lib/utils";
 import type { Warga, CollectionBatch, Setoran } from "@/types";
 import toast from "react-hot-toast";
 
+// ── Modal Konfirmasi Hapus (tema sama dengan halaman Kelola Warga) ──
+function KonfirmasiModal({
+  open,
+  onClose,
+  onConfirm,
+  title,
+  description,
+  confirmLabel = "Hapus",
+  loading,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  description: string;
+  confirmLabel?: string;
+  loading?: boolean;
+}) {
+  return (
+    <Modal open={open} onClose={onClose} title={title} size="sm">
+      <div className="space-y-4">
+        <div className="flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 p-3">
+          <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-red-700">{description}</p>
+        </div>
+        <div className="flex gap-2 pt-1">
+          <Button variant="outline" fullWidth onClick={onClose} disabled={loading}>
+            Batal
+          </Button>
+          <Button variant="danger" fullWidth loading={loading} onClick={onConfirm}>
+            {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function AdminSetoranPage() {
   const [batches, setBatches] = useState<CollectionBatch[]>([]);
   const [warga, setWarga] = useState<Warga[]>([]);
@@ -25,6 +63,10 @@ export default function AdminSetoranPage() {
   const [saving, setSaving] = useState(false);
   const [newBatchDate, setNewBatchDate] = useState(todayISO());
   const [form, setForm] = useState({ warga_id: "", berat_kg: "" });
+
+  // State konfirmasi hapus setoran
+  const [konfirmasiHapus, setKonfirmasiHapus] = useState<Setoran | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function load() {
     const [bRes, wRes] = await Promise.all([
@@ -105,20 +147,24 @@ export default function AdminSetoranPage() {
     }
   }
 
-  async function deleteSetoran(id: string) {
-    if (!confirm("Hapus setoran ini?")) return;
+  async function handleDeleteSetoran() {
+    if (!konfirmasiHapus) return;
+    setDeleting(true);
     try {
       const res = await fetch("/api/setoran", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ id: konfirmasiHapus.id }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
       toast.success("Setoran dihapus");
+      setKonfirmasiHapus(null);
       await loadSetoran(selectedBatch);
     } catch (e) {
       toast.error(String(e));
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -145,7 +191,7 @@ export default function AdminSetoranPage() {
           onChange={(e) => setSelectedBatch(e.target.value)}
           options={batches.map((b) => ({
             value: b.id,
-            label: `${b.id} — ${formatDateShort(b.tanggal)} (${b.status === "sold" ? "Terjual" : "Pending"})`,
+            label: `${b.id} - ${formatDateShort(b.tanggal)} (${b.status === "sold" ? "Terjual" : "Pending"})`,
           }))}
           placeholder="Pilih batch..."
         />
@@ -185,13 +231,13 @@ export default function AdminSetoranPage() {
               <Card key={s.id} className="flex items-center justify-between" padding="sm">
                 <div>
                   <p className="font-medium text-gray-900">{s.warga_nama ?? s.warga_id}</p>
-                  <p className="text-xs text-gray-500">RT {s.warga_rt}</p>
+                  <p className="text-xs text-gray-500">{s.warga_rt}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-brand-700">{formatKg(s.berat_kg)}</span>
                   {activeBatch?.status !== "sold" && (
                     <button
-                      onClick={() => deleteSetoran(s.id)}
+                      onClick={() => setKonfirmasiHapus(s)}
                       className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -211,7 +257,7 @@ export default function AdminSetoranPage() {
             label="Warga"
             value={form.warga_id}
             onChange={(e) => setForm({ ...form, warga_id: e.target.value })}
-            options={warga.map((w) => ({ value: w.id, label: `${w.nama} (RT ${w.rt})` }))}
+            options={warga.map((w) => ({ value: w.id, label: `${w.nama} (${w.rt})` }))}
             placeholder="Pilih warga..."
             required
           />
@@ -226,7 +272,7 @@ export default function AdminSetoranPage() {
             required
           />
           <div className="flex gap-2 pt-2">
-            <Button variant="outline" fullWidth onClick={() => setModalOpen(false)}>Batal</Button>
+            <Button variant="outline" fullWidth onClick={() => setModalOpen(false)} disabled={saving}>Batal</Button>
             <Button fullWidth loading={saving} onClick={addSetoran}>Simpan</Button>
           </div>
         </div>
@@ -243,11 +289,26 @@ export default function AdminSetoranPage() {
             required
           />
           <div className="flex gap-2 pt-2">
-            <Button variant="outline" fullWidth onClick={() => setNewBatchModal(false)}>Batal</Button>
+            <Button variant="outline" fullWidth onClick={() => setNewBatchModal(false)} disabled={saving}>Batal</Button>
             <Button fullWidth loading={saving} onClick={createBatch}>Buat Batch</Button>
           </div>
         </div>
       </Modal>
+
+      {/* Modal Konfirmasi Hapus Setoran */}
+      <KonfirmasiModal
+        open={!!konfirmasiHapus}
+        onClose={() => setKonfirmasiHapus(null)}
+        onConfirm={handleDeleteSetoran}
+        title="Hapus Setoran"
+        description={
+          konfirmasiHapus
+            ? `Apakah kamu yakin ingin menghapus setoran ${formatKg(konfirmasiHapus.berat_kg)} dari ${konfirmasiHapus.warga_nama ?? konfirmasiHapus.warga_id}? Tindakan ini tidak dapat dibatalkan.`
+            : ""
+        }
+        confirmLabel="Ya, Hapus"
+        loading={deleting}
+      />
     </AdminLayout>
   );
 }

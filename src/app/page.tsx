@@ -161,13 +161,6 @@ export default async function HomePage() {
             </div>
           </Link>
         </div>
-
-        <p className="mt-6 text-center text-xs text-gray-400">
-          Data diperbarui otomatis • Admin:{" "}
-          <Link href="/admin" className="text-brand-600 hover:underline">
-            Login
-          </Link>
-        </p>
       </main>
     </div>
   );

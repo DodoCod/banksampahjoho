@@ -267,25 +267,7 @@ export default function AdminPenjualanPage() {
             }
             disabled={saving}
           />
-
-          {/* Preview pembagian */}
-          {form.total_penjualan && (
-            <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 p-3 text-xs">
-              <div>
-                <p className="text-gray-500">Dana Warga (50%)</p>
-                <p className="font-bold text-brand-700">
-                  {formatRupiah(parseFloat(form.total_penjualan || "0") * 0.5)}
-                </p>
-              </div>
-              <div>
-                <p className="text-gray-500">Kas KT (50%)</p>
-                <p className="font-bold text-purple-700">
-                  {formatRupiah(parseFloat(form.total_penjualan || "0") * 0.5)}
-                </p>
-              </div>
-            </div>
-          )}
-
+          
           <div className="flex gap-2 pt-2">
             <Button
               variant="outline"
