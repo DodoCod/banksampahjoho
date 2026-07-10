@@ -9,22 +9,24 @@ import { Modal } from "@/components/ui/Modal";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { LoadingSpinner, EmptyState } from "@/components/ui/Feedback";
+import { FileUpload } from "@/components/ui/FileUpload";
 import { formatRupiah, formatKg, formatDateShort, parseBatchIds, todayISO } from "@/lib/utils";
 import type { CollectionBatch, SaleBatch } from "@/types";
 import toast from "react-hot-toast";
 
 export default function AdminPenjualanPage() {
-  const [sales, setSales] = useState<SaleBatch[]>([]);
-  const [batches, setBatches] = useState<CollectionBatch[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [sales, setSales]       = useState<SaleBatch[]>([]);
+  const [batches, setBatches]   = useState<CollectionBatch[]>([]);
+  const [loading, setLoading]   = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving]     = useState(false);
   const [form, setForm] = useState({
-    tanggal_jual: todayISO(),
-    total_kg: "",
-    total_penjualan: "",
-    nota_url: "",
-    selected_batches: [] as string[],
+    tanggal_jual:      todayISO(),
+    total_kg:          "",
+    total_penjualan:   "",
+    nota_url:          "",   // URL final dari Drive
+    nota_thumb:        "",   // thumbnail URL
+    selected_batches:  [] as string[],
   });
 
   async function load() {
@@ -54,7 +56,18 @@ export default function AdminPenjualanPage() {
     }));
   }
 
-  // Auto-calculate harga_per_kg
+  function resetForm() {
+    setForm({
+      tanggal_jual:     todayISO(),
+      total_kg:         "",
+      total_penjualan:  "",
+      nota_url:         "",
+      nota_thumb:       "",
+      selected_batches: [],
+    });
+  }
+
+  // Harga per kg otomatis
   const hargaPerKg =
     form.total_kg && form.total_penjualan
       ? Math.round(parseFloat(form.total_penjualan) / parseFloat(form.total_kg))
@@ -70,20 +83,20 @@ export default function AdminPenjualanPage() {
     setSaving(true);
     try {
       const res = await fetch("/api/sale-batch", {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body:    JSON.stringify({
           collection_batch_ids: form.selected_batches,
-          total_kg: parseFloat(form.total_kg),
-          total_penjualan: parseFloat(form.total_penjualan),
-          nota_url: form.nota_url,
+          total_kg:             parseFloat(form.total_kg),
+          total_penjualan:      parseFloat(form.total_penjualan),
+          nota_url:             form.nota_url,
         }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
-      toast.success(`Penjualan ${data.data.id} berhasil disimpan! Saldo warga otomatis diperbarui.`);
+      toast.success(`Penjualan ${data.data.id} tersimpan! Saldo warga otomatis diperbarui.`);
       setModalOpen(false);
-      setForm({ tanggal_jual: todayISO(), total_kg: "", total_penjualan: "", nota_url: "", selected_batches: [] });
+      resetForm();
       await load();
     } catch (e) {
       toast.error(String(e));
@@ -98,7 +111,11 @@ export default function AdminPenjualanPage() {
         title="Penjualan"
         description={`${sales.length} transaksi penjualan`}
         action={
-          <Button onClick={() => setModalOpen(true)} size="sm" disabled={pendingBatches.length === 0}>
+          <Button
+            onClick={() => setModalOpen(true)}
+            size="sm"
+            disabled={pendingBatches.length === 0}
+          >
             <Plus className="h-4 w-4" /> Input Penjualan
           </Button>
         }
@@ -117,9 +134,9 @@ export default function AdminPenjualanPage() {
           <EmptyState icon={ShoppingCart} title="Belum ada penjualan" />
         ) : (
           [...sales].reverse().map((sale) => {
-            const batchIds = parseBatchIds(sale.collection_batch_ids);
+            const batchIds  = parseBatchIds(sale.collection_batch_ids);
             const danaWarga = sale.total_penjualan * 0.5;
-            const danaKT = sale.total_penjualan * 0.5;
+            const danaKT    = sale.total_penjualan * 0.5;
             return (
               <Card key={sale.id} padding="sm">
                 <div className="flex items-start justify-between mb-3">
@@ -129,17 +146,21 @@ export default function AdminPenjualanPage() {
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-gray-900">{formatRupiah(sale.total_penjualan)}</p>
-                    <p className="text-xs text-gray-500">{formatKg(sale.total_kg)} • {formatRupiah(sale.harga_per_kg)}/kg</p>
+                    <p className="text-xs text-gray-500">
+                      {formatKg(sale.total_kg)} • {formatRupiah(sale.harga_per_kg)}/kg
+                    </p>
                   </div>
                 </div>
+
                 {/* Batch IDs */}
                 <div className="flex flex-wrap gap-1 mb-3">
                   {batchIds.map((id) => (
                     <Badge key={id} variant="blue">{id}</Badge>
                   ))}
                 </div>
+
                 {/* Pembagian */}
-                <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 p-2 text-xs">
+                <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 p-2 text-xs mb-2">
                   <div>
                     <p className="text-gray-500">Dana Warga (50%)</p>
                     <p className="font-semibold text-brand-700">{formatRupiah(danaWarga)}</p>
@@ -149,12 +170,14 @@ export default function AdminPenjualanPage() {
                     <p className="font-semibold text-purple-700">{formatRupiah(danaKT)}</p>
                   </div>
                 </div>
+
+                {/* Nota */}
                 {sale.nota_url && (
                   <a
                     href={sale.nota_url}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                    className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
                   >
                     <ExternalLink className="h-3 w-3" /> Lihat Nota
                   </a>
@@ -165,8 +188,14 @@ export default function AdminPenjualanPage() {
         )}
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Input Penjualan" size="lg">
-        <div className="space-y-4">
+      {/* ── Modal Input Penjualan ── */}
+      <Modal
+        open={modalOpen}
+        onClose={() => { setModalOpen(false); resetForm(); }}
+        title="Input Penjualan"
+        size="lg"
+      >
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
           {/* Pilih batch */}
           <div>
             <p className="mb-2 text-sm font-medium text-gray-700">
@@ -189,7 +218,9 @@ export default function AdminPenjualanPage() {
                     />
                     <div>
                       <span className="font-medium text-gray-900">{b.id}</span>
-                      <span className="ml-2 text-xs text-gray-500">{formatDateShort(b.tanggal)}</span>
+                      <span className="ml-2 text-xs text-gray-500">
+                        {formatDateShort(b.tanggal)}
+                      </span>
                     </div>
                   </label>
                 ))}
@@ -197,6 +228,7 @@ export default function AdminPenjualanPage() {
             )}
           </div>
 
+          {/* Berat & Harga */}
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="Total Berat (kg)"
@@ -219,6 +251,7 @@ export default function AdminPenjualanPage() {
             />
           </div>
 
+          {/* Harga per kg otomatis */}
           {hargaPerKg > 0 && (
             <div className="rounded-lg bg-brand-50 px-3 py-2 text-sm">
               <span className="text-gray-600">Harga per kg: </span>
@@ -226,15 +259,16 @@ export default function AdminPenjualanPage() {
             </div>
           )}
 
-          <Input
-            label="URL Nota (Google Drive)"
-            type="url"
+          {/* Upload Nota — komponen baru */}
+          <FileUpload
             value={form.nota_url}
-            onChange={(e) => setForm({ ...form, nota_url: e.target.value })}
-            placeholder="https://drive.google.com/..."
-            hint="Upload nota ke Google Drive lalu paste link-nya di sini"
+            onChange={(url, thumb) =>
+              setForm((f) => ({ ...f, nota_url: url, nota_thumb: thumb ?? "" }))
+            }
+            disabled={saving}
           />
 
+          {/* Preview pembagian */}
           {form.total_penjualan && (
             <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 p-3 text-xs">
               <div>
@@ -253,9 +287,16 @@ export default function AdminPenjualanPage() {
           )}
 
           <div className="flex gap-2 pt-2">
-            <Button variant="outline" fullWidth onClick={() => setModalOpen(false)}>Batal</Button>
+            <Button
+              variant="outline"
+              fullWidth
+              onClick={() => { setModalOpen(false); resetForm(); }}
+              disabled={saving}
+            >
+              Batal
+            </Button>
             <Button fullWidth loading={saving} onClick={handleSave}>
-              Simpan 
+              Simpan & Generate Pembagian
             </Button>
           </div>
         </div>
